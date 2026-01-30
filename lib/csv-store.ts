@@ -1,0 +1,231 @@
+/**
+ * CSV-based blog store: parse, chunk, and retrieve by keyword overlap (TF-style scoring).
+ * No vector DB; MVP retrieval in pure TypeScript.
+ */
+
+export interface BlogChunk {
+  id: string;
+  postTitle: string;
+  slug: string;
+  text: string;
+  postIndex: number;
+  chunkIndex: number;
+}
+
+export interface ChunkWithScore extends BlogChunk {
+  score: number;
+}
+
+const CHUNK_SIZE = 1000;
+const CHUNK_OVERLAP = 200;
+const TOP_K = 5;
+
+/** Strip HTML tags and decode common entities to plain text */
+export function htmlToPlainText(html: string): string {
+  if (!html || typeof html !== "string") return "";
+  let text = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  text = text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+  return text;
+}
+
+/** Simple CSV parse (handles quoted fields with commas) */
+export function parseCSV(content: string): Record<string, string>[] {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]);
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    const row: Record<string, string> = {};
+    headers.forEach((h, j) => {
+      row[h] = values[j] ?? "";
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      inQuotes = !inQuotes;
+    } else if (inQuotes) {
+      current += c;
+    } else if (c === ",") {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+/** Chunk a long text with overlap */
+export function chunkText(text: string, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = start + size;
+    if (end < text.length) {
+      const lastSpace = text.lastIndexOf(" ", end);
+      if (lastSpace > start) end = lastSpace;
+    }
+    chunks.push(text.slice(start, end).trim());
+    start = end - overlap;
+    if (start >= text.length) break;
+  }
+  return chunks.filter((c) => c.length > 0);
+}
+
+/** Tokenize for scoring: lowercase, split on non-alphanumeric */
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 1);
+}
+
+/** Build term frequency map */
+function termFreq(tokens: string[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const t of tokens) {
+    map.set(t, (map.get(t) ?? 0) + 1);
+  }
+  return map;
+}
+
+/** Document frequency: how many chunks contain each term */
+function docFreq(chunks: { text: string }[]): Map<string, number> {
+  const df = new Map<string, number>();
+  for (const c of chunks) {
+    const terms = new Set(tokenize(c.text));
+    for (const t of Array.from(terms)) {
+      df.set(t, (df.get(t) ?? 0) + 1);
+    }
+  }
+  return df;
+}
+
+/** Score query against a chunk (TF * IDF style; IDF = log(N/df)) */
+function scoreChunk(
+  queryTokens: string[],
+  chunk: BlogChunk,
+  N: number,
+  df: Map<string, number>
+): number {
+  const chunkTf = termFreq(tokenize(chunk.text));
+  let score = 0;
+  for (const q of queryTokens) {
+    const tf = chunkTf.get(q) ?? 0;
+    if (tf === 0) continue;
+    const d = df.get(q) ?? 0;
+    const idf = d > 0 ? Math.log((N + 1) / (d + 1)) + 1 : 1;
+    score += tf * idf;
+  }
+  return score;
+}
+
+/** Retrieve top K chunks by keyword relevance */
+export function retrieve(
+  chunks: BlogChunk[],
+  query: string,
+  topK = TOP_K
+): ChunkWithScore[] {
+  if (chunks.length === 0) return [];
+  const queryTokens = tokenize(query);
+  if (queryTokens.length === 0) return chunks.slice(0, topK).map((c) => ({ ...c, score: 1 }));
+
+  const df = docFreq(chunks);
+  const N = chunks.length;
+  const scored = chunks.map((c) => ({
+    ...c,
+    score: scoreChunk(queryTokens, c, N, df),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK).filter((c) => c.score > 0);
+}
+
+/** Build chunks from CSV rows. Column names are flexible (Name/Title, Slug, Post Body/Body, etc.) */
+export function buildChunksFromCSV(rows: Record<string, string>[]): BlogChunk[] {
+  const chunks: BlogChunk[] = [];
+  const bodyKey = findKey(rows[0], ["Post Body", "Post body", "Body", "post_body", "Content"]);
+  const titleKey = findKey(rows[0], ["Name", "Title", "Meta Title", "name", "title"]);
+  const slugKey = findKey(rows[0], ["Slug", "slug", "URL"]);
+
+  if (!bodyKey || !slugKey) {
+    throw new Error("CSV must have columns for post body and slug (e.g. 'Post Body', 'Slug').");
+  }
+
+  rows.forEach((row, postIndex) => {
+    const slug = (row[slugKey] ?? "").trim();
+    const title = ((titleKey ? row[titleKey] : null) ?? row[slugKey] ?? "Untitled").trim();
+    const rawBody = row[bodyKey] ?? "";
+    const text = htmlToPlainText(rawBody);
+    if (!text) return;
+    const textChunks = chunkText(text);
+    textChunks.forEach((t, chunkIndex) => {
+      chunks.push({
+        id: `post-${postIndex}-chunk-${chunkIndex}`,
+        postTitle: title,
+        slug,
+        text: t,
+        postIndex,
+        chunkIndex,
+      });
+    });
+  });
+  return chunks;
+}
+
+export function findKey(row: Record<string, string>, candidates: string[]): string | null {
+  const keys = Object.keys(row);
+  for (const c of candidates) {
+    const k = keys.find((x) => x.toLowerCase() === c.toLowerCase());
+    if (k) return k;
+  }
+  return null;
+}
+
+/** Post index entry for dataset metadata */
+export interface PostIndexEntry {
+  title: string;
+  slug: string;
+  datePublished?: string;
+  tags?: string;
+}
+
+/** Build posts index from CSV rows (title, slug, datePublished, tags) */
+export function buildPostsIndexFromCSV(rows: Record<string, string>[]): PostIndexEntry[] {
+  if (rows.length === 0) return [];
+  const first = rows[0];
+  const titleKey = findKey(first, ["Name", "Title", "Meta Title", "name", "title"]);
+  const slugKey = findKey(first, ["Slug", "slug", "URL"]);
+  const dateKey = findKey(first, ["Date Published", "Date published", "date", "Published", "published"]);
+  const tagsKey = findKey(first, ["Tags", "tags", "Tag"]);
+  if (!slugKey) return [];
+  return rows.map((row) => ({
+    title: (row[titleKey ?? ""] ?? row[slugKey] ?? "Untitled").trim(),
+    slug: (row[slugKey] ?? "").trim(),
+    ...(dateKey && row[dateKey] ? { datePublished: row[dateKey].trim() } : {}),
+    ...(tagsKey && row[tagsKey] ? { tags: row[tagsKey].trim() } : {}),
+  }));
+}
