@@ -18,6 +18,7 @@
 
 body {
   background: #000000;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Glassmorphism */
