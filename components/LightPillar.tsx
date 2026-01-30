@@ -240,13 +240,13 @@ const LightPillar = ({
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
 
-    let mouseMoveTimeout: ReturnType<typeof window.setTimeout> | null = null;
+    let mouseMoveTimeout: number | null = null;
     const handleMouseMove = (event: MouseEvent) => {
       if (!interactive) return;
       if (mouseMoveTimeout) return;
       mouseMoveTimeout = window.setTimeout(() => {
         mouseMoveTimeout = null;
-      }, 16);
+      }, 16) as unknown as number;
       // Use viewport so pillar responds even when mouse is over UI on top
       const x = (event.clientX / window.innerWidth) * 2 - 1;
       const y = -((event.clientY / window.innerHeight) * 2 - 1);
@@ -277,7 +277,7 @@ const LightPillar = ({
     };
     rafRef.current = requestAnimationFrame(animate);
 
-    let resizeTimeout: ReturnType<typeof window.setTimeout> | null = null;
+    let resizeTimeout: number | null = null;
     const handleResize = () => {
       if (resizeTimeout) clearTimeout(resizeTimeout);
       resizeTimeout = window.setTimeout(() => {
@@ -286,7 +286,7 @@ const LightPillar = ({
         const newHeight = containerRef.current.clientHeight;
         rendererRef.current.setSize(newWidth, newHeight);
         materialRef.current.uniforms.uResolution.value.set(newWidth, newHeight);
-      }, 150);
+      }, 150) as unknown as number;
     };
     window.addEventListener("resize", handleResize, { passive: true });
 
