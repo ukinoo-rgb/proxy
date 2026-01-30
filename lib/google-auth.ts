@@ -43,12 +43,33 @@ function loadCredsFromFile(): ServiceAccountCreds {
   }
 }
 
+/** Try to parse env JSON; tolerate BOM, trim, and double-encoded string. */
+function parseServiceAccountJson(raw: string): ServiceAccountCreds {
+  const trimmed = raw.replace(/^\uFEFF/, "").trim();
+  try {
+    return JSON.parse(trimmed) as ServiceAccountCreds;
+  } catch {
+    // Some platforms (e.g. Vercel) may store the value as a double-encoded string
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      try {
+        const inner = JSON.parse(trimmed) as string;
+        return JSON.parse(inner) as ServiceAccountCreds;
+      } catch {
+        // fall through to final error
+      }
+    }
+  }
+  throw new Error(
+    "GOOGLE_SERVICE_ACCOUNT_JSON is invalid JSON. Use scripts/env-from-json.ts to convert your .json file to one line, or remove it and use the file in dev."
+  );
+}
+
 function getCreds(): ServiceAccountCreds {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (raw && typeof raw === "string" && raw.trim().length > 0) {
     try {
-      return JSON.parse(raw) as ServiceAccountCreds;
-    } catch {
+      return parseServiceAccountJson(raw);
+    } catch (e) {
       // In development, fall back to file if env var is malformed (e.g. quoting/newlines in .env)
       if (process.env.NODE_ENV !== "production") {
         try {
@@ -57,9 +78,7 @@ function getCreds(): ServiceAccountCreds {
           // rethrow the JSON parse error so user knows the env var is the problem
         }
       }
-      throw new Error(
-        "GOOGLE_SERVICE_ACCOUNT_JSON is invalid JSON. Use scripts/env-from-json.ts to convert your .json file to one line, or remove it and use the file in dev."
-      );
+      throw e;
     }
   }
   // Local dev only: read from file (never in production)
