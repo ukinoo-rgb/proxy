@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import Image from "next/image";
 import GridScanBackground from "./components/GridScanBackground";
+import logo from "@/data/logo.png";
 
 type Mode = "blog" | "analytics" | "combined";
 
@@ -69,9 +71,9 @@ export default function Home() {
       <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-2xl px-4">
         <div className="glass-nav rounded-2xl px-5 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-white font-semibold tracking-tight">ProxLearn</span>
+            <Image src={logo} alt="ProxLearn" height={128} width={128} className="h-auto w-16 sm:w-20 object-contain" priority unoptimized />
           </div>
-          <span className="text-sm text-white/60">Home</span>
+          <span className="text-sm text-white/60">Ask away</span>
         </div>
       </nav>
 
