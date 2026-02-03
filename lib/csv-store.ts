@@ -1,6 +1,9 @@
 /**
- * CSV-based blog store: parse, chunk, and retrieve by keyword overlap (TF-style scoring).
- * No vector DB; MVP retrieval in pure TypeScript.
+ * Blog store: parse CSV → chunks, store in data/chunks.json.
+ *
+ * Search: When chunks have .embedding (from ingest with GEMINI_API_KEY), we use semantic
+ * search (cosine similarity with query embedding). Otherwise keyword (TF*IDF) on title + slug + text.
+ * Fallback: if no keyword match, return first K chunks so the model always has context.
  */
 
 export interface BlogChunk {
@@ -10,6 +13,8 @@ export interface BlogChunk {
   text: string;
   postIndex: number;
   chunkIndex: number;
+  /** Optional: 768-dim embedding for semantic search (Gemini). */
+  embedding?: number[];
 }
 
 export interface ChunkWithScore extends BlogChunk {
@@ -113,11 +118,12 @@ function termFreq(tokens: string[]): Map<string, number> {
   return map;
 }
 
-/** Document frequency: how many chunks contain each term */
-function docFreq(chunks: { text: string }[]): Map<string, number> {
+/** Document frequency: how many chunks contain each term (title + text for consistency). */
+function docFreq(chunks: BlogChunk[]): Map<string, number> {
   const df = new Map<string, number>();
   for (const c of chunks) {
-    const terms = new Set(tokenize(c.text));
+    const searchable = `${c.postTitle} ${c.slug} ${c.text}`.trim();
+    const terms = new Set(tokenize(searchable));
     for (const t of Array.from(terms)) {
       df.set(t, (df.get(t) ?? 0) + 1);
     }
@@ -125,14 +131,15 @@ function docFreq(chunks: { text: string }[]): Map<string, number> {
   return df;
 }
 
-/** Score query against a chunk (TF * IDF style; IDF = log(N/df)) */
+/** Score query against a chunk (TF * IDF). Use title + text so "virtual teaching" matches post titles. */
 function scoreChunk(
   queryTokens: string[],
   chunk: BlogChunk,
   N: number,
   df: Map<string, number>
 ): number {
-  const chunkTf = termFreq(tokenize(chunk.text));
+  const searchable = `${chunk.postTitle} ${chunk.slug} ${chunk.text}`.trim();
+  const chunkTf = termFreq(tokenize(searchable));
   let score = 0;
   for (const q of queryTokens) {
     const tf = chunkTf.get(q) ?? 0;
@@ -144,7 +151,40 @@ function scoreChunk(
   return score;
 }
 
-/** Retrieve top K chunks by keyword relevance */
+/** Cosine similarity between two vectors (assumes same length). */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/** Retrieve top K chunks by semantic similarity (embeddings). Chunks must have .embedding. */
+export function retrieveByEmbedding(
+  chunks: BlogChunk[],
+  queryEmbedding: number[],
+  topK = TOP_K
+): ChunkWithScore[] {
+  const withEmbedding = chunks.filter((c): c is BlogChunk & { embedding: number[] } =>
+    Array.isArray(c.embedding) && c.embedding.length === queryEmbedding.length
+  );
+  if (withEmbedding.length === 0) return [];
+  const scored = withEmbedding.map((c) => ({
+    ...c,
+    score: cosineSimilarity(c.embedding, queryEmbedding),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK);
+}
+
+/** Retrieve top K chunks by keyword relevance. If no keyword match, return first topK (so AI always has context). */
 export function retrieve(
   chunks: BlogChunk[],
   query: string,
@@ -161,7 +201,12 @@ export function retrieve(
     score: scoreChunk(queryTokens, c, N, df),
   }));
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK).filter((c) => c.score > 0);
+  const withScore = scored.slice(0, topK).filter((c) => c.score > 0);
+  // Fallback: if no chunk matched (e.g. semantic query like "what do you offer?"), return first topK so the model has content.
+  if (withScore.length === 0) {
+    return chunks.slice(0, topK).map((c) => ({ ...c, score: 1 }));
+  }
+  return withScore;
 }
 
 /** Build chunks from CSV rows. Column names are flexible (Name/Title, Slug, Post Body/Body, etc.) */

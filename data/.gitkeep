@@ -1,1 +1,1 @@
-# Place "Proximity Learning - Blog Articles.csv" here, then run: npm run ingest
+# Place your blog CSV here (e.g. Proximity Learning - Blog Articles - *.csv), then run: npm run ingest

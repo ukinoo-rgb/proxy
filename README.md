@@ -21,7 +21,7 @@ Production-ready Next.js App Router app that provides an AI assistant for **Prox
 - Gemini via `@google/generative-ai`  
 - GA4 via `googleapis` (Analytics Data API)  
 - Search Console via `googleapis`  
-- MVP retrieval: keyword scoring (TF-IDF style) in pure TS, no vector DB  
+- Blog retrieval: **semantic search** (Gemini embeddings + cosine similarity) when ingest is run with `GEMINI_API_KEY`; otherwise keyword (TF-IDF) fallback  
 
 ## Setup
 
@@ -73,7 +73,7 @@ cp .env.example .env.local
 ### 3. Blog CSV and ingest
 
 - Place your blog export CSV at:  
-  `data/Proximity Learning - Blog Articles.csv`  
+  `data/Proximity Learning - Blog Articles - 645d04f01e169d0a780f6d88.csv`  
   (or set `BLOG_CSV_PATH` to another path.)  
 - Columns should include: **Name** (or Title), **Slug**, **Post Body** (HTML). Optional: Meta Title, Meta Description, Tags, Minutes Read, Date Published.  
 - Ingest into a local chunk store:
@@ -82,7 +82,7 @@ cp .env.example .env.local
   npm run ingest
   ```
 
-  This writes `data/chunks.json`. **Commit this file** so Vercel has it at build/runtime (or run ingest in a build step and commit the result).
+  This writes `data/chunks.json`. With `GEMINI_API_KEY` set, ingest also embeds each chunk (Gemini `gemini-embedding-001`) so the app uses **semantic search** (e.g. "staffing crisis" → "teacher shortage" posts). Use `EMBED=0 npm run ingest` for keyword-only (no API calls). **Commit** `data/chunks.json` so Vercel has it at build/runtime (or run ingest in a build step and commit the result).
 
 ### 4. Run locally
 

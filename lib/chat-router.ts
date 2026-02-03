@@ -37,3 +37,16 @@ export const SUMMARIZATION_TOP_K = 18;
 export function getTopKForQuery(message: string): number {
   return isSummarizationQuestion(message) ? SUMMARIZATION_TOP_K : DEFAULT_TOP_K;
 }
+
+/** Detect questions about first/last/oldest/newest post so we include those posts' chunks. */
+export function isOrderQuestion(message: string): { first?: boolean; last?: boolean } {
+  const q = message.toLowerCase().trim();
+  const first =
+    /\b(first|oldest|earliest)\s*(blog|post|article)\b/i.test(q) ||
+    /\b(what|which)\s+(was|is)\s+the\s+first\b/i.test(q) ||
+    /\b(blog|post|article)\s+#\s*1\b/i.test(q);
+  const last =
+    /\b(last|newest|most recent|latest)\s*(blog|post|article)\b/i.test(q) ||
+    /\b(what|which)\s+(was|is)\s+(the\s+)?(last|newest|latest)\b/i.test(q);
+  return { first: !!first, last: !!last };
+}

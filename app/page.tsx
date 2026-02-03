@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import GridScanBackground from "./components/GridScanBackground";
 import logo from "@/data/logo.png";
 
@@ -19,12 +21,6 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<Mode>("combined");
-  const [dateRange, setDateRange] = useState(() => {
-    const end = new Date();
-    const start = new Date(end);
-    start.setDate(start.getDate() - 28);
-    return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
-  });
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,10 +31,12 @@ export default function Home() {
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setLoading(true);
     try {
+      // Send full conversation history so the model has context (enterprise-grade multi-turn).
+      const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, mode, dateRange }),
+        body: JSON.stringify({ message: text, mode, history }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -57,7 +55,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, mode, dateRange]);
+  }, [input, loading, mode, messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -90,7 +88,7 @@ export default function Home() {
             Ask about our blog and analytics.
           </h1>
 
-          {/* Minimal options: mode + date range */}
+          {/* Mode only; date range is typed in the chat when needed */}
           <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-3 mb-4 sm:mb-6">
             <div className="flex rounded-xl glass border border-white/10 overflow-hidden p-0.5">
               {(["blog", "analytics", "combined"] as const).map((m) => (
@@ -107,23 +105,6 @@ export default function Home() {
                   {m}
                 </button>
               ))}
-            </div>
-            <div className="flex items-center gap-2 rounded-xl glass px-3 py-2.5 sm:py-2 border border-white/10 min-h-[44px] sm:min-h-0">
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange((d) => ({ ...d, start: e.target.value }))}
-                className="bg-transparent text-white/90 text-xs border-0 focus:outline-none focus:ring-0 [color-scheme:dark] min-w-0 flex-1 sm:flex-none sm:max-w-[7rem] touch-manipulation"
-                aria-label="From date"
-              />
-              <span className="text-white/40 text-xs shrink-0">→</span>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange((d) => ({ ...d, end: e.target.value }))}
-                className="bg-transparent text-white/90 text-xs border-0 focus:outline-none focus:ring-0 [color-scheme:dark] min-w-0 flex-1 sm:flex-none sm:max-w-[7rem] touch-manipulation"
-                aria-label="To date"
-              />
             </div>
           </div>
 
@@ -150,7 +131,40 @@ export default function Home() {
                       {m.dataWindow && (
                         <p className="text-[10px] text-slate-500 mb-1">{m.dataWindow}</p>
                       )}
-                      <div className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">{m.content}</div>
+                      {m.role === "assistant" ? (
+                        <div className="prose-chat text-xs sm:text-sm leading-relaxed break-words">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                              ul: ({ children }) => <ul className="my-2 list-disc pl-5 space-y-0.5">{children}</ul>,
+                              ol: ({ children }) => <ol className="my-2 list-decimal pl-5 space-y-0.5">{children}</ol>,
+                              li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                              strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                              h1: ({ children }) => <h1 className="text-sm font-bold mt-2 mb-1 first:mt-0">{children}</h1>,
+                              h2: ({ children }) => <h2 className="text-sm font-bold mt-2 mb-1 first:mt-0">{children}</h2>,
+                              h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1 first:mt-0">{children}</h3>,
+                              a: ({ href, children }) => (
+                                <a href={href} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">
+                                  {children}
+                                </a>
+                              ),
+                              code: ({ className, children }) =>
+                                className ? (
+                                  <code className={`block text-[11px] sm:text-xs p-2 rounded bg-white/10 overflow-x-auto ${className}`}>{children}</code>
+                                ) : (
+                                  <code className="px-1 py-0.5 rounded bg-white/10 text-[11px]">{children}</code>
+                                ),
+                              pre: ({ children }) => <pre className="my-2 overflow-x-auto">{children}</pre>,
+                              blockquote: ({ children }) => <blockquote className="border-l-2 border-white/30 pl-3 my-2 text-white/80">{children}</blockquote>,
+                            }}
+                          >
+                            {m.content}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">{m.content}</div>
+                      )}
                       {m.sources && m.sources.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-white/10">
                           <p className="text-[10px] text-slate-500 mb-1">Sources</p>
