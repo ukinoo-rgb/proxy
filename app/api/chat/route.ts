@@ -48,7 +48,7 @@ function parseDateRangeFromMessage(message: string): { start: string; end: strin
   }
 
   // Two ISO dates: "from 2024-01-01 to 2024-01-31" or "2024-01-01 to 2024-01-31" or just two dates
-  const isoMatches = [...text.matchAll(ISO_DATE)];
+  const isoMatches = Array.from(text.matchAll(ISO_DATE));
   if (isoMatches.length >= 2) {
     const first = isoMatches[0][0];
     const last = isoMatches[isoMatches.length - 1][0];
@@ -243,8 +243,8 @@ export async function POST(request: NextRequest) {
 
     let ga4Summary: Awaited<ReturnType<typeof fetchGA4Summary>> | null = null;
     let gscSummary: Awaited<ReturnType<typeof fetchGSCSummary>> | null = null;
-    let ga4SummaryB: typeof ga4Summary = null;
-    let gscSummaryB: typeof gscSummary = null;
+    let ga4SummaryB: Awaited<ReturnType<typeof fetchGA4Summary>> | null = null;
+    let gscSummaryB: Awaited<ReturnType<typeof fetchGSCSummary>> | null = null;
     const comparisonLabels = hasComparison
       ? { a: comparisonRanges![0].label, b: comparisonRanges![1].label }
       : undefined;
