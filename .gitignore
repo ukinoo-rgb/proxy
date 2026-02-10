@@ -26,3 +26,6 @@ npm-debug.log*
 
 # optional: uncomment if you don't want to commit the chunks (use env instead)
 # data/chunks.json
+
+# eval run outputs (local)
+data/eval-runs

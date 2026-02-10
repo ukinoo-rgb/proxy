@@ -1,0 +1,104 @@
+{
+  "version": "1.0",
+  "questions": [
+    {
+      "id": "easy-01",
+      "question": "How many blog posts do we have?",
+      "category": "easy",
+      "expected_intent": "blog_lookup",
+      "expected_mode": "catalog_only",
+      "required_citations": "No blog chunks; answer from meta only.",
+      "must_not_hallucinate": ["no invented post count"]
+    },
+    {
+      "id": "easy-02",
+      "question": "What was our first blog post?",
+      "category": "easy",
+      "expected_intent": "blog_lookup",
+      "expected_mode": "chunks",
+      "required_citations": "Sources with title + slug; only from catalog.",
+      "must_not_hallucinate": ["no invented URLs", "no invented titles"]
+    },
+    {
+      "id": "easy-03",
+      "question": "What was our last post?",
+      "category": "easy",
+      "expected_intent": "blog_lookup",
+      "expected_mode": "chunks",
+      "required_citations": "Sources with title + slug.",
+      "must_not_hallucinate": ["no invented URLs"]
+    },
+    {
+      "id": "tricky-01",
+      "question": "How did we do in 2025?",
+      "category": "tricky",
+      "expected_intent": "unknown",
+      "expected_mode": "combined",
+      "required_citations": "Clarify: traffic vs content; if analytics, Data window.",
+      "must_not_hallucinate": ["no numbers not in provided data"]
+    },
+    {
+      "id": "tricky-02",
+      "question": "2025 blog summary",
+      "category": "tricky",
+      "expected_intent": "blog_summary",
+      "expected_mode": "catalog_only",
+      "required_citations": "List/summary from catalog filtered by 2025; Sources if citing posts.",
+      "must_not_hallucinate": ["no GA4/GSC unless asked"]
+    },
+    {
+      "id": "tricky-03",
+      "question": "What did we publish in 2024?",
+      "category": "tricky",
+      "expected_intent": "blog_lookup",
+      "expected_mode": "catalog_only",
+      "required_citations": "Catalog only; no chunk retrieval.",
+      "must_not_hallucinate": ["no invented posts"]
+    },
+    {
+      "id": "adversarial-01",
+      "question": "Why did organic traffic drop last month?",
+      "category": "adversarial",
+      "expected_intent": "seo_diagnosis",
+      "expected_mode": "analytics",
+      "required_citations": "Data window; only use provided GA4/GSC. If missing, say what's missing.",
+      "must_not_hallucinate": ["no estimated numbers", "no invented source/medium"]
+    },
+    {
+      "id": "adversarial-02",
+      "question": "Compare conversions in January vs February.",
+      "category": "adversarial",
+      "expected_intent": "conversion_debug",
+      "expected_mode": "analytics",
+      "required_citations": "If conversion data not in context, say so and ask 1 question.",
+      "must_not_hallucinate": ["no invented conversion events"]
+    },
+    {
+      "id": "adversarial-03",
+      "question": "Which blog ranks for teacher shortage Illinois?",
+      "category": "adversarial",
+      "expected_intent": "blog_lookup",
+      "expected_mode": "chunks",
+      "required_citations": "Only cite from retrieved chunks or catalog.",
+      "must_not_hallucinate": ["no invented rankings if GSC not provided"]
+    },
+    {
+      "id": "regression-01",
+      "question": "List all posts from 2025.",
+      "category": "regression",
+      "expected_intent": "blog_lookup",
+      "expected_mode": "catalog_only",
+      "required_citations": "Catalog only; Sources with title + slug.",
+      "must_not_hallucinate": ["no chunk retrieval for list-by-year"]
+    },
+    {
+      "id": "regression-02",
+      "question": "Give me SEO opportunities.",
+      "category": "regression",
+      "expected_intent": "seo_diagnosis",
+      "expected_mode": "analytics",
+      "required_citations": "Data window; GSC queries position 11-20 + high impressions.",
+      "must_not_hallucinate": ["only from provided GSC data"]
+    }
+  ]
+}

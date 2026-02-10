@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/07/schema#",
+  "version": "2.0",
+  "skills": [
+    {
+      "id": "seo_diagnosis",
+      "description": "Diagnose organic traffic or ranking drops using GA4 + GSC; identify likely cause (tracking, channel, ranking, content, technical, seasonality).",
+      "example_queries": [
+        "Why did organic traffic drop?",
+        "What happened to our search rankings?",
+        "Organic traffic is down this month",
+        "Why are we getting fewer clicks from Google?",
+        "Diagnose our SEO performance drop"
+      ],
+      "triggers": ["organic.*drop", "traffic.*down", "ranking.*drop", "fewer clicks", "seo.*diagnos", "search.*decline"],
+      "requires": ["GA4_SUMMARY", "GSC_TOP_QUERIES", "GSC_TOP_PAGES", "GSC_QUERY_PAGE_ROWS"],
+      "outputs": ["evidence.ga4", "evidence.gsc", "answer_with_causes", "data_window"],
+      "evidence_rules": [
+        "window.start and window.end present when analytics used",
+        "at_least_one_of: ga4.totalSessions, gsc.top_queries length > 0, gsc.top_pages length > 0"
+      ],
+      "failure_mode": "I don't have enough data to diagnose. Please provide a date range (e.g. last 28 days) and ensure GA4 + GSC are connected."
+    },
+    {
+      "id": "cannibalization_check",
+      "description": "Identify keyword cannibalization: same query ranking for multiple pages; report overlap with impressions/clicks/position per page.",
+      "example_queries": [
+        "Are we cannibalizing keywords?",
+        "Which pages compete for the same query?",
+        "Do we have keyword cannibalization?",
+        "Same query multiple pages",
+        "Teacher appreciation 2023 vs 2025 overlap"
+      ],
+      "triggers": ["cannibaliz", "same query.*multiple", "compete.*query", "overlap.*query", "multiple pages.*query"],
+      "requires": ["GSC_QUERY_PAGE_ROWS", "GSC_TOP_QUERIES", "GSC_TOP_PAGES"],
+      "outputs": ["evidence.gsc.query_page_overlap", "evidence.gsc.per_url_queries", "answer_with_metrics", "data_window"],
+      "evidence_rules": [
+        "at_least_one overlap case: query with >= 2 distinct pages and impressions/clicks/position for each",
+        "window.start and window.end present",
+        "never_claim_without: shared query + 2 pages + window metrics"
+      ],
+      "failure_mode": "I need query–page data for the selected period to confirm cannibalization. Try a date range with more data, or request a full query–page export (paginated)."
+    },
+    {
+      "id": "per_url_rankings",
+      "description": "Answer 'is this URL/page still ranking on page 2?' or 'what keywords does this URL rank for?' using GSC data for that specific page.",
+      "example_queries": [
+        "Is the 2023 teacher appreciation post still on page 2?",
+        "What keywords does /blog/xyz rank for?",
+        "How is this URL performing in search?",
+        "Rankings for [specific URL/slug]"
+      ],
+      "triggers": ["still ranking", "page 2", "keywords does.*rank", "this url", "this page", "specific.*url", "slug.*rank"],
+      "requires": ["GSC_PAGE_FILTER", "GSC_TOP_PAGES"],
+      "outputs": ["evidence.gsc.per_url_queries", "answer_with_positions_impressions"],
+      "evidence_rules": [
+        "gsc.per_url_queries[normalized_url] present OR gsc_page_filter result for requested URL",
+        "if URL not in top_pages then FETCH_GSC_PAGE_FILTER is mandatory"
+      ],
+      "failure_mode": "I don't have GSC data for that specific URL in the selected window. I can run a page-filtered report for that URL if you confirm the exact path."
+    },
+    {
+      "id": "content_strategy",
+      "description": "Content themes, gaps, internal linking plan, next articles; combine blog catalog + GSC queries.",
+      "example_queries": [
+        "What should we write next?",
+        "Content strategy for next quarter",
+        "Which topics are we missing?",
+        "Internal linking plan",
+        "Content gaps from search data"
+      ],
+      "triggers": ["write next", "content strategy", "topics.*missing", "internal link", "content gap", "next.*article"],
+      "requires": ["CATALOG_ONLY", "VECTOR_SEARCH", "GSC_TOP_QUERIES", "GSC_QUERY_PAGE_ROWS"],
+      "outputs": ["evidence.blog", "evidence.gsc", "internal_link_plan", "content_updates"],
+      "evidence_rules": [
+        "blog.citations or catalog present",
+        "gsc.top_queries or query_page rows for opportunity detection"
+      ],
+      "failure_mode": "I need blog catalog and GSC query data. Ensure a date range is set for GSC."
+    },
+    {
+      "id": "ctr_opportunities",
+      "description": "Striking-distance and CTR gap opportunities (position 11–20, high impressions, low CTR); recommend title/meta/snippet edits.",
+      "example_queries": [
+        "Which keywords are in striking distance?",
+        "CTR opportunities",
+        "Quick wins for search",
+        "Position 11–20 high impressions",
+        "Title and meta suggestions from GSC"
+      ],
+      "triggers": ["striking distance", "ctr.*opportunit", "quick win", "position 11", "title.*meta", "snippet"],
+      "requires": ["GSC_TOP_QUERIES", "GSC_QUERY_PAGE_ROWS"],
+      "outputs": ["evidence.gsc.ctr_gaps", "evidence.gsc.striking_distance", "opportunities_export"],
+      "evidence_rules": [
+        "gsc.striking_distance or gsc.ctr_gaps present when claiming opportunities",
+        "each opportunity has query, page (if any), impressions, position, ctr, target_ctr or score"
+      ],
+      "failure_mode": "I need GSC query data for the period. Set a date range and try again."
+    },
+    {
+      "id": "traffic_health",
+      "description": "Overall site traffic health: sessions, pageviews, top landing pages, engagement from GA4.",
+      "example_queries": [
+        "How is our traffic?",
+        "Site traffic last month",
+        "Top landing pages",
+        "Sessions and pageviews",
+        "Traffic overview"
+      ],
+      "triggers": ["traffic", "sessions", "pageviews", "landing page", "how is.*site", "overview"],
+      "requires": ["GA4_SUMMARY"],
+      "outputs": ["evidence.ga4", "data_window"],
+      "evidence_rules": [
+        "ga4.totalSessions or ga4.totalPageviews present",
+        "window present when analytics used"
+      ],
+      "failure_mode": "I need GA4 data. Set a date range (e.g. last 28 days) and ensure GA4 is connected."
+    },
+    {
+      "id": "blog_catalog_only",
+      "description": "List, count, first, last, or list-by-year blog posts; no retrieval, catalog only.",
+      "example_queries": [
+        "How many blog posts do we have?",
+        "First blog post",
+        "Last article",
+        "List all posts in 2025",
+        "What did we publish in 2024?"
+      ],
+      "triggers": ["how many.*post", "first.*post", "last.*post", "list.*post", "publish.*in \\d{4}", "blogs? in \\d{4}"],
+      "requires": ["CATALOG_ONLY"],
+      "outputs": ["evidence.blog.catalog"],
+      "evidence_rules": ["catalog (postsIndex) present"],
+      "failure_mode": "Blog catalog is empty. Run ingest to index posts."
+    },
+    {
+      "id": "blog_thematic",
+      "description": "Thematic summary or lookup: what we say about X; requires vector search over chunks.",
+      "example_queries": [
+        "What do we say about virtual teaching?",
+        "Summarize our blog themes",
+        "Find posts about teacher appreciation",
+        "Overview of our content"
+      ],
+      "triggers": ["what do we say", "summarize", "themes?", "find.*about", "overview.*content"],
+      "requires": ["CATALOG_ONLY", "VECTOR_SEARCH"],
+      "outputs": ["evidence.blog.citations"],
+      "evidence_rules": ["blog.citations from retrieval; cite only from evidence"],
+      "failure_mode": "Retrieval returned no chunks. Try a different query or ensure the blog index is built."
+    },
+    {
+      "id": "internal_links",
+      "description": "Suggest internal links: source URL, target URL, anchor text, reason; from content + GSC.",
+      "example_queries": [
+        "Internal linking suggestions",
+        "Which pages should link to each other?",
+        "Link from X to Y",
+        "Internal link plan"
+      ],
+      "triggers": ["internal link", "link.*between", "link.*to each", "link plan"],
+      "requires": ["VECTOR_SEARCH", "GSC_TOP_PAGES", "GSC_QUERY_PAGE_ROWS"],
+      "outputs": ["evidence.computed_actions.internal_link_plan", "internal_links_export"],
+      "evidence_rules": ["blog or catalog present; GSC pages for relevance"],
+      "failure_mode": "I need blog content and GSC page data to suggest internal links. Set a date range for GSC."
+    },
+    {
+      "id": "content_decay",
+      "description": "Identify older content losing rankings or traffic; recommend which posts to prune or consolidate using per-post performance (sessions, pageviews, impressions, clicks).",
+      "example_queries": [
+        "Which old posts are decaying?",
+        "Content decay analysis",
+        "Older posts losing rankings",
+        "What content is declining?",
+        "Which blogs should we delete?",
+        "Recommend posts to prune"
+      ],
+      "triggers": ["decay", "old.*post", "losing rank", "declining", "outdated content", "delete.*blog", "prune", "which.*to delete"],
+      "requires": ["CATALOG_ONLY", "GSC_TOP_PAGES", "GSC_QUERY_PAGE_ROWS", "GA4_SUMMARY"],
+      "outputs": ["evidence.blog_performance", "evidence.gsc", "evidence.ga4", "evidence.blog.catalog", "content_updates"],
+      "evidence_rules": [
+        "window present; compare by URL/page with dates from catalog",
+        "when blog_performance present use it: cite sessions, pageviews, impressions, clicks per post for delete/prune recommendations"
+      ],
+      "failure_mode": "I need GSC and GA4 for the period plus blog catalog (with dates). Set date range and ensure catalog has datePublished. Then evidence.blog_performance will list each post with traffic and search metrics."
+    },
+    {
+      "id": "redirect_merge",
+      "description": "Suggest redirects: consolidate duplicate or underperforming URLs; from GSC overlap + GA4.",
+      "example_queries": [
+        "Which URLs should we redirect?",
+        "Redirect suggestions",
+        "Merge duplicate content",
+        "301 redirect plan"
+      ],
+      "triggers": ["redirect", "merge", "duplicate.*url", "301", "consolidat"],
+      "requires": ["GSC_QUERY_PAGE_ROWS", "GSC_TOP_PAGES", "GA4_SUMMARY"],
+      "outputs": ["evidence.computed_actions.redirect_suggestions", "redirect_list_export"],
+      "evidence_rules": [
+        "redirect_suggestions include from_url, to_url, reason, winner_metrics when claiming"
+      ],
+      "failure_mode": "I need GSC query–page and GA4 data to suggest redirects. Set date range and ensure full or paginated query–page rows."
+    },
+    {
+      "id": "conversion_debug",
+      "description": "Conversion or goal debugging; traffic vs conversions, funnel assumptions, tracking checklist.",
+      "example_queries": [
+        "Why are conversions down?",
+        "Conversion tracking check",
+        "Goals not firing",
+        "Traffic vs conversions"
+      ],
+      "triggers": ["conversion", "goal", "tracking", "funnel", "not firing"],
+      "requires": ["GA4_SUMMARY"],
+      "outputs": ["evidence.ga4", "answer_with_caveats"],
+      "evidence_rules": [
+        "do not invent event data; only use provided GA4 metrics"
+      ],
+      "failure_mode": "I only have session/pageview data. For conversion events, check GA4 configuration and DebugView."
+    },
+    {
+      "id": "seasonal_topics",
+      "description": "Seasonal or time-based content suggestions; combine catalog dates + GSC query trends.",
+      "example_queries": [
+        "Seasonal content for back to school",
+        "What to publish in Q4?",
+        "Topics by season",
+        "Timely content ideas"
+      ],
+      "triggers": ["seasonal", "back to school", "Q4", "publish.*in", "timely"],
+      "requires": ["CATALOG_ONLY", "VECTOR_SEARCH", "GSC_TOP_QUERIES"],
+      "outputs": ["evidence.blog", "evidence.gsc"],
+      "evidence_rules": ["catalog with dates or GSC queries present"],
+      "failure_mode": "I need blog catalog (with dates) and GSC query data for the period."
+    },
+    {
+      "id": "schema_meta",
+      "description": "Title/meta/snippet improvement suggestions from GSC CTR and position data.",
+      "example_queries": [
+        "Title tag suggestions",
+        "Meta description improvements",
+        "Snippet optimization",
+        "Schema suggestions"
+      ],
+      "triggers": ["title tag", "meta description", "snippet", "schema", "meta.*improve"],
+      "requires": ["GSC_TOP_QUERIES", "GSC_QUERY_PAGE_ROWS"],
+      "outputs": ["evidence.gsc.ctr_gaps", "opportunities_export"],
+      "evidence_rules": ["each suggestion tied to query + page + metrics in evidence"],
+      "failure_mode": "I need GSC query (and optionally query–page) data. Set date range."
+    },
+    {
+      "id": "technical_seo",
+      "description": "Technical SEO checks: indexation, errors, speed; use GA4/GSC and any available crawl data.",
+      "example_queries": [
+        "Technical SEO issues",
+        "Indexation problems",
+        "Site errors",
+        "Page speed and SEO"
+      ],
+      "triggers": ["technical", "indexation", "crawl", "error", "speed"],
+      "requires": ["GA4_SUMMARY", "GSC_TOP_PAGES"],
+      "outputs": ["evidence.ga4", "evidence.gsc", "answer_with_caveats"],
+      "evidence_rules": ["do not invent crawl data; only use provided metrics"],
+      "failure_mode": "I only have GA4 and GSC performance data. For crawl/indexation, use Search Console URL Inspection or a crawler."
+    },
+    {
+      "id": "site_health",
+      "description": "Overall site health: traffic, search, top pages, anomalies in one view.",
+      "example_queries": [
+        "Site health check",
+        "How is our site doing?",
+        "Overall performance",
+        "Health overview"
+      ],
+      "triggers": ["site health", "how is.*site", "overall", "health check"],
+      "requires": ["GA4_SUMMARY", "GSC_TOP_QUERIES", "GSC_TOP_PAGES"],
+      "outputs": ["evidence.ga4", "evidence.gsc", "data_window"],
+      "evidence_rules": ["window + at least one GA4 or GSC metric"],
+      "failure_mode": "Set a date range and ensure GA4 and GSC are connected."
+    },
+    {
+      "id": "comparison_periods",
+      "description": "Compare two periods (e.g. 2024 vs 2025); GA4 and GSC for both.",
+      "example_queries": [
+        "Compare 2024 to 2025",
+        "2024 vs 2025 traffic",
+        "Year over year comparison",
+        "Last month vs this month"
+      ],
+      "triggers": ["compare.*\\d{4}", "\\d{4} vs \\d{4}", "year over year", "vs.*month"],
+      "requires": ["GA4_SUMMARY", "GSC_TOP_QUERIES", "GSC_TOP_PAGES", "GSC_QUERY_PAGE_ROWS"],
+      "outputs": ["evidence.ga4 (both)", "evidence.gsc (both)", "data_window both periods"],
+      "evidence_rules": ["two windows; metrics for each period"],
+      "failure_mode": "I need two date ranges (e.g. compare 2024 to 2025). Specify both periods."
+    },
+    {
+      "id": "international_seo",
+      "description": "Hreflang or multi-region hints; use catalog and GSC if multiple properties available.",
+      "example_queries": [
+        "International SEO",
+        "Hreflang setup",
+        "Multi-region content",
+        "Locale versions"
+      ],
+      "triggers": ["international", "hreflang", "multi.region", "locale", "language"],
+      "requires": ["CATALOG_ONLY"],
+      "outputs": ["evidence.blog.catalog", "answer_with_caveats"],
+      "evidence_rules": ["do not invent hreflang data; only catalog/URLs if available"],
+      "failure_mode": "I only have the single property's catalog. For hreflang, use URL structure and Search Console per property."
+    },
+    {
+      "id": "show_evidence",
+      "description": "User requests to see the evidence or proof behind an answer.",
+      "example_queries": [
+        "Show evidence",
+        "What data did you use?",
+        "Prove it",
+        "Show me the numbers",
+        "Explain your reasoning"
+      ],
+      "triggers": ["show evidence", "what data", "prove", "explain reasoning", "numbers"],
+      "requires": [],
+      "outputs": ["evidence_summary", "trace"],
+      "evidence_rules": [],
+      "failure_mode": "Return last evidence_summary and trace from session."
+    },
+    {
+      "id": "export_artifacts",
+      "description": "User requests CSV or export (redirects, internal links, opportunities, content updates).",
+      "example_queries": [
+        "Export redirects CSV",
+        "Download opportunities",
+        "Give me internal links CSV",
+        "Export content plan"
+      ],
+      "triggers": ["export", "download", "csv", "give me.*link"],
+      "requires": [],
+      "outputs": ["export_urls", "next_actions with payload"],
+      "evidence_rules": [],
+      "failure_mode": "Generate export from last response's evidence if available; else ask to run the relevant analysis first."
+    }
+  ]
+}

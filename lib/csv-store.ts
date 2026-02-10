@@ -15,6 +15,14 @@ export interface BlogChunk {
   chunkIndex: number;
   /** Optional: 768-dim embedding for semantic search (Gemini). */
   embedding?: number[];
+  /** Optional: section heading when chunked by headings (cleaner citations). */
+  heading?: string;
+  /** Optional: post date; useful for "blogs in 2025" filtering. */
+  datePublished?: string;
+  /** Optional: post tags. */
+  tags?: string;
+  /** Optional: one-line summary of this section (for reranker/display). */
+  section_summary?: string;
 }
 
 export interface ChunkWithScore extends BlogChunk {
@@ -98,6 +106,51 @@ export function chunkText(text: string, size = CHUNK_SIZE, overlap = CHUNK_OVERL
     if (start >= text.length) break;
   }
   return chunks.filter((c) => c.length > 0);
+}
+
+/** Match markdown or HTML headings for section chunking */
+const SECTION_HEADING = /^(#{1,6}\s+.+)$|^<h[1-6][^>]*>(.*?)<\/h[1-6]>/im;
+
+/** Chunk by semantic sections (headings). Each section becomes one chunk. Falls back to size-based if no headings. */
+export function chunkBySections(text: string): { heading?: string; text: string; section_summary?: string }[] {
+  const sections: { heading?: string; text: string; section_summary?: string }[] = [];
+  const lines = text.split(/\r?\n/);
+  let currentHeading: string | undefined;
+  let currentLines: string[] = [];
+
+  function flush() {
+    const block = currentLines.join("\n").trim();
+    if (!block) return;
+    const firstSentence = block.split(/[.!?]\s+/)[0]?.trim().slice(0, 120);
+    sections.push({
+      ...(currentHeading ? { heading: currentHeading } : {}),
+      text: block,
+      ...(firstSentence ? { section_summary: firstSentence + (firstSentence.length >= 120 ? "…" : "") } : {}),
+    });
+  }
+
+  for (const line of lines) {
+    const mdMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    const htmlMatch = line.match(/^<h([1-6])[^>]*>(.*?)<\/h\1>/i);
+    if (mdMatch) {
+      flush();
+      currentHeading = mdMatch[2].trim();
+      currentLines = [];
+    } else if (htmlMatch) {
+      flush();
+      currentHeading = htmlMatch[2].replace(/<[^>]+>/g, "").trim();
+      currentLines = [];
+    } else {
+      currentLines.push(line);
+    }
+  }
+  flush();
+
+  if (sections.length === 0) return [];
+  if (sections.length === 1 && !sections[0].heading) {
+    return chunkText(text).map((t) => ({ text: t, section_summary: t.slice(0, 120) + (t.length > 120 ? "…" : "") }));
+  }
+  return sections;
 }
 
 /** Tokenize for scoring: lowercase, split on non-alphanumeric */
@@ -184,7 +237,7 @@ export function retrieveByEmbedding(
   return scored.slice(0, topK);
 }
 
-/** Retrieve top K chunks by keyword relevance. If no keyword match, return first topK (so AI always has context). */
+/** Retrieve top K chunks by keyword relevance (TF*IDF). If no keyword match, return first topK (so AI always has context). */
 export function retrieve(
   chunks: BlogChunk[],
   query: string,
@@ -209,12 +262,48 @@ export function retrieve(
   return withScore;
 }
 
-/** Build chunks from CSV rows. Column names are flexible (Name/Title, Slug, Post Body/Body, etc.) */
+const RRF_K = 60;
+
+/** Merge two ranked lists with Reciprocal Rank Fusion. Same chunk in both lists gets 1/(k+rank_a) + 1/(k+rank_b). */
+export function mergeWithRRF(
+  listA: ChunkWithScore[],
+  listB: ChunkWithScore[],
+  takeTop: number
+): ChunkWithScore[] {
+  const byId = new Map<string, { chunk: ChunkWithScore; rrf: number }>();
+  function addRank(list: ChunkWithScore[], rankStart: number) {
+    list.forEach((c, i) => {
+      const rank = rankStart + i + 1;
+      const rrf = 1 / (RRF_K + rank);
+      const existing = byId.get(c.id);
+      if (existing) {
+        existing.rrf += rrf;
+      } else {
+        byId.set(c.id, { chunk: { ...c, score: rrf }, rrf });
+      }
+    });
+  }
+  addRank(listA, 0);
+  addRank(listB, 0);
+  const merged = Array.from(byId.values())
+    .map(({ chunk, rrf }) => ({ ...chunk, score: rrf }))
+    .sort((a, b) => b.score - a.score);
+  return merged.slice(0, takeTop);
+}
+
+/** Detect if body has section headings (markdown ## or <h2>) so we can chunk by sections. */
+function hasSectionHeadings(text: string): boolean {
+  return /^#{1,6}\s+/m.test(text) || /<h[1-6][^>]*>/i.test(text);
+}
+
+/** Build chunks from CSV rows. Uses section-based chunking when body has headings; else size-based. Adds slug, title, datePublished, heading, tags, section_summary per chunk. */
 export function buildChunksFromCSV(rows: Record<string, string>[]): BlogChunk[] {
   const chunks: BlogChunk[] = [];
   const bodyKey = findKey(rows[0], ["Post Body", "Post body", "Body", "post_body", "Content"]);
   const titleKey = findKey(rows[0], ["Name", "Title", "Meta Title", "name", "title"]);
   const slugKey = findKey(rows[0], ["Slug", "slug", "URL"]);
+  const dateKey = findKey(rows[0], ["Date Published", "Date published", "date", "Published", "published"]);
+  const tagsKey = findKey(rows[0], ["Tags", "tags", "Tag"]);
 
   if (!bodyKey || !slugKey) {
     throw new Error("CSV must have columns for post body and slug (e.g. 'Post Body', 'Slug').");
@@ -223,18 +312,28 @@ export function buildChunksFromCSV(rows: Record<string, string>[]): BlogChunk[] 
   rows.forEach((row, postIndex) => {
     const slug = (row[slugKey] ?? "").trim();
     const title = ((titleKey ? row[titleKey] : null) ?? row[slugKey] ?? "Untitled").trim();
+    const datePublished = dateKey && row[dateKey] ? row[dateKey].trim() : undefined;
+    const tags = tagsKey && row[tagsKey] ? row[tagsKey].trim() : undefined;
     const rawBody = row[bodyKey] ?? "";
     const text = htmlToPlainText(rawBody);
     if (!text) return;
-    const textChunks = chunkText(text);
-    textChunks.forEach((t, chunkIndex) => {
+
+    const useSections = hasSectionHeadings(text);
+    const rawChunks = useSections ? chunkBySections(text) : chunkText(text).map((t) => ({ text: t }));
+
+    rawChunks.forEach((raw, chunkIndex) => {
+      const sectionText = "text" in raw ? raw.text : raw;
       chunks.push({
         id: `post-${postIndex}-chunk-${chunkIndex}`,
         postTitle: title,
         slug,
-        text: t,
+        text: sectionText,
         postIndex,
         chunkIndex,
+        ...(datePublished ? { datePublished } : {}),
+        ...(tags ? { tags } : {}),
+        ...("heading" in raw && raw.heading ? { heading: raw.heading } : {}),
+        ...("section_summary" in raw && raw.section_summary ? { section_summary: raw.section_summary } : {}),
       });
     });
   });

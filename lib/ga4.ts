@@ -50,7 +50,7 @@ export async function fetchGA4Summary(
   try {
     const analytics = google.analyticsdata({ version: "v1beta", auth });
 
-    const [runReportTopPages, runReportTotals] = await Promise.all([
+    const [runReportTopPages, runReportTotals, runReportSourceMedium] = await Promise.all([
       analytics.properties.runReport({
         property: `properties/${String(propertyId)}`,
         requestBody: {
@@ -65,7 +65,7 @@ export async function fetchGA4Summary(
             { name: "engagementRate" },
             { name: "averageSessionDuration" },
           ],
-          limit: "20",
+          limit: "300",
           orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         },
       }),
@@ -77,6 +77,19 @@ export async function fetchGA4Summary(
             { name: "sessions" },
             { name: "screenPageViews" },
           ],
+        },
+      }),
+      analytics.properties.runReport({
+        property: `properties/${String(propertyId)}`,
+        requestBody: {
+          dateRanges: [{ startDate, endDate }],
+          dimensions: [
+            { name: "sessionSource" },
+            { name: "sessionMedium" },
+          ],
+          metrics: [{ name: "sessions" }],
+          limit: "25",
+          orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         },
       }),
     ]);
@@ -108,9 +121,21 @@ export async function fetchGA4Summary(
       totalPageviews = parseInt(totalRows[0].metricValues?.[1]?.value ?? "0", 10);
     }
 
+    const trafficSources: GA4TrafficSource[] = [];
+    const sourceRows = runReportSourceMedium.data.rows ?? [];
+    for (const row of sourceRows) {
+      const source = (row.dimensionValues?.[0]?.value ?? "").trim() || "(not set)";
+      const medium = (row.dimensionValues?.[1]?.value ?? "").trim() || "(not set)";
+      const sessions = parseInt(row.metricValues?.[0]?.value ?? "0", 10);
+      if (sessions > 0) {
+        trafficSources.push({ source, medium, sessions });
+      }
+    }
+
     return {
       dateRange: { start: startDate, end: endDate },
       topPages,
+      trafficSources: trafficSources.length > 0 ? trafficSources : undefined,
       totalSessions,
       totalPageviews,
     };

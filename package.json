@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "ingest": "tsx scripts/ingest-csv.ts",
-    "env-from-json": "tsx scripts/env-from-json.ts"
+    "env-from-json": "tsx scripts/env-from-json.ts",
+    "eval": "tsx scripts/eval-chat.ts",
+    "eval:dry": "tsx scripts/eval-chat.ts --dry-run"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

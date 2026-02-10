@@ -8,8 +8,9 @@
 import path from "path";
 import fs from "fs";
 import type { BlogChunk, PostIndexEntry } from "./csv-store";
-import { retrieve, retrieveByEmbedding, type ChunkWithScore } from "./csv-store";
+import { retrieve, retrieveByEmbedding, mergeWithRRF, type ChunkWithScore } from "./csv-store";
 import { embedForQuery } from "./embeddings";
+import { rerankChunks } from "./reranker";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const CHUNKS_FILE = path.join(DATA_DIR, "chunks.json");
@@ -94,24 +95,51 @@ export function loadChunks(): BlogChunk[] {
   return loadIndex().chunks;
 }
 
-/** Retrieve top chunks for a query. Uses semantic search when embeddings exist, else keyword (TF*IDF). */
+/** Number of candidates to fetch from each branch (semantic + keyword) before merge. */
+const HYBRID_CANDIDATE_MULTIPLIER = 2;
+/** Max candidates to send to reranker (cheap fetch, then rerank to topK). */
+const RERANK_CANDIDATE_POOL = 20;
+const RERANK_TOP = 10;
+
+/** Hybrid retrieval: semantic + keyword, merge with RRF, then rerank to top N. */
 export async function getRelevantChunks(query: string, topK = 5): Promise<ChunkWithScore[]> {
   const index = loadIndex();
   const chunks = index.chunks;
+  if (chunks.length === 0) return [];
+
   const useSemantic =
     index.meta.hasEmbeddings === true &&
     chunks.length > 0 &&
     Array.isArray((chunks[0] as BlogChunk).embedding);
+
+  const poolSize = Math.min(RERANK_CANDIDATE_POOL, Math.max(topK * HYBRID_CANDIDATE_MULTIPLIER, topK));
+  let candidates: ChunkWithScore[];
+
   if (useSemantic) {
     try {
       const queryEmbedding = await embedForQuery(query);
-      const byEmbedding = retrieveByEmbedding(chunks, queryEmbedding, topK);
-      if (byEmbedding.length > 0) return byEmbedding;
+      const byEmbedding = retrieveByEmbedding(chunks, queryEmbedding, poolSize);
+      const byKeyword = retrieve(chunks, query, poolSize);
+      candidates = mergeWithRRF(byEmbedding, byKeyword, poolSize);
+      if (candidates.length === 0) candidates = byEmbedding.length > 0 ? byEmbedding : byKeyword;
     } catch (e) {
-      console.warn("Semantic search failed, falling back to keyword:", e);
+      console.warn("Hybrid search failed, falling back to keyword:", e);
+      candidates = retrieve(chunks, query, poolSize);
     }
+  } else {
+    candidates = retrieve(chunks, query, poolSize);
   }
-  return retrieve(chunks, query, topK);
+
+  const finalK = Math.min(topK, RERANK_TOP, candidates.length);
+  if (candidates.length <= finalK) return candidates;
+
+  try {
+    const reranked = await rerankChunks(query, candidates, finalK);
+    return reranked.length > 0 ? reranked : candidates.slice(0, finalK);
+  } catch (e) {
+    console.warn("Rerank failed, using merged order:", e);
+    return candidates.slice(0, finalK);
+  }
 }
 
 /** Get all chunks for a given post (by CSV row order index). Used for "first blog" / "last blog" so the model can describe content. */

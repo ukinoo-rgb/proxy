@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Eval questions",
+  "description": "Test set for chat faithfulness, helpfulness, format, consistency. Expand to 50+ questions.",
+  "type": "object",
+  "properties": {
+    "version": { "type": "string" },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question", "category"],
+        "properties": {
+          "id": { "type": "string", "description": "Unique id, e.g. easy-01, tricky-05" },
+          "question": { "type": "string", "description": "User message" },
+          "category": {
+            "type": "string",
+            "enum": ["easy", "tricky", "adversarial", "regression"],
+            "description": "easy = metadata/first/last; tricky = ambiguous; adversarial = missing data; regression = bugs fixed"
+          },
+          "expected_intent": { "type": "string", "description": "One of blog_summary, blog_lookup, seo_diagnosis, analytics_health, conversion_debug, how_to, admin, unknown" },
+          "expected_mode": {
+            "type": "string",
+            "enum": ["catalog_only", "chunks", "analytics", "combined"],
+            "description": "catalog_only = no retrieval; chunks = blog retrieval; analytics = GA4/GSC; combined"
+          },
+          "required_citations": {
+            "type": "string",
+            "description": "Rule: e.g. 'Sources section when blog cited', 'Data window when analytics used'"
+          },
+          "must_not_hallucinate": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "e.g. ['no invented URLs', 'no numbers not in GA4/GSC']"
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  },
+  "required": ["version", "questions"]
+}
