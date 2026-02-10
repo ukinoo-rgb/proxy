@@ -325,9 +325,9 @@ export function buildCaseFile(input: EvidenceBuilderInput): CaseFile {
       add("site-wide", `CTR opportunity: "${o.query}" — ${o.impressions} impr, pos ${o.position.toFixed(1)}, CTR ${(o.ctr * 100).toFixed(2)}%.`);
     }
     const content_updates: ComputedActions["content_updates"] = [];
-    for (const [url, bullets] of bulletsByUrl) {
+    Array.from(bulletsByUrl).forEach(([url, bullets]) => {
       content_updates.push({ url, bullets: bullets.slice(0, 5) });
-    }
+    });
     if (content_updates.length) computed.content_updates = content_updates.slice(0, 20);
   }
   if (Object.keys(computed).length) caseFile.computed_actions = computed;

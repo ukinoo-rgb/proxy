@@ -597,7 +597,7 @@ export async function POST(request: NextRequest) {
           trace_id: traceId,
         });
       }
-      const sources = [...new Map(blogChunks.map((c) => [c.slug, { title: c.postTitle, slug: c.slug, url: `https://www.proxlearn.com/blog/${c.slug}` }])).values()];
+      const sources = Array.from(new Map(blogChunks.map((c) => [c.slug, { title: c.postTitle, slug: c.slug, url: `https://www.proxlearn.com/blog/${c.slug}` }])).values());
       const { result, duration_ms: composerMs } = await withTiming("compose_answer", () =>
         composeAnswer({
           caseFile,

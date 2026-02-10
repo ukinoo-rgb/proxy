@@ -90,7 +90,7 @@ export async function composeAnswer(input: AnswerComposerInput): Promise<ChatRes
   const history = conversationHistory.length > MAX_HISTORY ? conversationHistory.slice(-MAX_HISTORY) : conversationHistory;
   const contents = [
     ...history.map((m) => ({
-      role: (m.role === "assistant" ? "model" : "user") as const,
+      role: (m.role === "assistant" ? "model" : "user") as "user" | "model",
       parts: [{ text: m.content }],
     })),
     { role: "user" as const, parts: [{ text: userParts.join("\n") }] },

@@ -50,7 +50,7 @@ function loadChatList(): { currentId: string; chats: SavedChat[] } {
     if (raw) {
       const data = JSON.parse(raw) as { currentId?: string; chats?: unknown[] };
       const chats = (Array.isArray(data.chats) ? data.chats : [])
-        .filter((c): c is SavedChat => c && typeof c === "object" && typeof (c as SavedChat).id === "string" && Array.isArray((c as SavedChat).messages))
+        .filter((c): c is SavedChat => Boolean(c && typeof c === "object" && typeof (c as SavedChat).id === "string" && Array.isArray((c as SavedChat).messages)))
         .map((c) => ({
           id: (c as SavedChat).id,
           title: String((c as SavedChat).title || "New chat"),
@@ -67,7 +67,7 @@ function loadChatList(): { currentId: string; chats: SavedChat[] } {
       const data = JSON.parse(legacy) as { messages?: unknown[]; mode?: string };
       const messages = Array.isArray(data.messages) ? data.messages : [];
       const valid: Message[] = messages
-        .filter((m): m is Message => m && typeof m === "object" && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .filter((m): m is Message => Boolean(m && typeof m === "object" && (m as Message).role !== undefined && ((m as Message).role === "user" || (m as Message).role === "assistant") && typeof (m as Message).content === "string"))
         .map((m) => ({
           role: (m as Message).role,
           content: (m as Message).content,

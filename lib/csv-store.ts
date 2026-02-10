@@ -332,8 +332,8 @@ export function buildChunksFromCSV(rows: Record<string, string>[]): BlogChunk[] 
         chunkIndex,
         ...(datePublished ? { datePublished } : {}),
         ...(tags ? { tags } : {}),
-        ...("heading" in raw && raw.heading ? { heading: raw.heading } : {}),
-        ...("section_summary" in raw && raw.section_summary ? { section_summary: raw.section_summary } : {}),
+        ...("heading" in raw && typeof raw.heading === "string" ? { heading: raw.heading } : {}),
+        ...("section_summary" in raw && typeof raw.section_summary === "string" ? { section_summary: raw.section_summary } : {}),
       });
     });
   });

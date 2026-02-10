@@ -212,8 +212,8 @@ export function computeCannibalizationCandidates(
     byQuery.set(r.query, list);
   }
   const candidates: CannibalizationCandidate[] = [];
-  for (const [query, list] of byQuery) {
-    if (list.length < minPagesPerQuery) continue;
+  Array.from(byQuery).forEach(([query, list]) => {
+    if (list.length < minPagesPerQuery) return;
     const totalImpressions = list.reduce((s, r) => s + r.impressions, 0);
     candidates.push({
       query,
@@ -225,7 +225,7 @@ export function computeCannibalizationCandidates(
       })),
       totalImpressions,
     });
-  }
+  });
   candidates.sort((a, b) => b.totalImpressions - a.totalImpressions);
   return candidates.slice(0, 15);
 }
@@ -255,7 +255,7 @@ export function computePerPageQueries(
     byPage.set(r.page, list);
   }
   const result: PerPageQueries[] = [];
-  for (const [page, list] of byPage) {
+  Array.from(byPage).forEach(([page, list]) => {
     const totalImpressions = list.reduce((s, r) => s + r.impressions, 0);
     const sorted = [...list].sort((a, b) => b.impressions - a.impressions);
     result.push({
@@ -268,7 +268,7 @@ export function computePerPageQueries(
         position: r.position,
       })),
     });
-  }
+  });
   result.sort((a, b) => b.totalImpressions - a.totalImpressions);
   return result.slice(0, maxPages);
 }

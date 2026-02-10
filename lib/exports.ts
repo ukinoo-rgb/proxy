@@ -109,9 +109,9 @@ export function buildOpportunitiesList(caseFile: CaseFile): OpportunityRow[] {
 /**
  * Serialize to CSV string (header + rows).
  */
-export function toCsv<T extends Record<string, unknown>>(rows: T[], columns: (keyof T)[]): string {
+export function toCsv(rows: object[], columns: string[]): string {
   const header = columns.join(",");
-  const lines = rows.map((r) => columns.map((c) => csvEscape(String(r[c] ?? ""))).join(","));
+  const lines = rows.map((r) => columns.map((c) => csvEscape(String((r as Record<string, unknown>)[c] ?? ""))).join(","));
   return [header, ...lines].join("\n");
 }
 
