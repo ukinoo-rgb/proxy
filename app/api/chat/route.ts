@@ -6,7 +6,7 @@ import { planQuery, type Plan } from "@/lib/planner";
 import { fetchGA4Summary } from "@/lib/ga4";
 import { fetchGSCSummary } from "@/lib/gsc";
 import { chatWithGemini, type ChatInput } from "@/lib/gemini";
-// V2: evidence-driven path (enable with CHAT_V2=1 or body.v2 === true)
+// V2: evidence-driven path is the default; set CHAT_V2=0 in env to use legacy path
 import { routeV2 } from "@/lib/router-v2";
 import { buildCaseFile } from "@/lib/evidence";
 import { validateEvidence } from "@/lib/evidence-validate";
@@ -539,8 +539,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // V2: evidence-driven path (CHAT_V2=1 or body.v2). Skip V2 for comparison—legacy path formats both periods.
-    let useV2 = process.env.CHAT_V2 === "1" || (body as { v2?: boolean }).v2 === true;
+    // V2: evidence-driven path is default; set CHAT_V2=0 to use legacy. Skip V2 for comparison—legacy path formats both periods.
+    let useV2 = process.env.CHAT_V2 !== "0" && (body as { v2?: boolean }).v2 !== false;
     if (hasComparison) useV2 = false;
     if (useV2) {
       const catalogSlugs = meta?.postsIndex?.map((p) => p.slug) ?? [];
